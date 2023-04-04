@@ -4,10 +4,8 @@ author: "Brady Miller"
 title-block-banner: true
 title-block-style: default
 toc: true
-format: html
-# format: pdf
----
-
+# format: html
+format: pdf 
 ---
 
 
@@ -22,9 +20,9 @@ Include a _very brief_ summary of what you learnt in this class here.
 
 Today, I learnt the following concepts in class:
 
-1. Item 1
-1. Item 2
-1. Item 3
+1. More on plotting boundaries using decision trees
+1. Creating neural networks
+1. Regression with Neural Networks (compared to other types)
 :::
 
 
@@ -40,12 +38,16 @@ library(nnet)
 library(mlbench)
 library(class)
 library(rpart.plot)
+library(e1071)
 ```
+
 
 #### Plotting boundaries using decision trees
 
 Creating plot of points
 ```{r}
+ex1 <- \(x) ifelse(
+  sign(x[1] * x[2]) +0.01 * rnorm(1) <= 0, 0, 1)
 n <- 200
 X <- t(replicate(n, 2 * runif(2) -1))
 y <- apply(X, 1, ex1) %>% as.factor()
@@ -57,6 +59,8 @@ plot(df$x1, df$x2, col = col, pch = 19)
 Creating the logistic function and the predictions on the model that we will
 graph
 ```{r}
+model <- glm(y~., df, family = binomial())
+
 f_logistic = \(x) predict(model, data.frame(x1=x[,1], x2 = x[,2]), 
                           type = 'response')
 
@@ -89,13 +93,14 @@ overview(f_logistic)
 ```
 This plot demonstrates the linear regression would not be a good choice for this
 data set as many of the points are misclassified. This is also shown in the 
-confusion matrix, as 70 of the 99 points that are actually blue are classified/
-predicted as red, while 21 of the 101 points that are actually red are 
+confusion matrix, as 41 of the 94 points that are actually blue are classified/
+predicted as red, while 18 of the 106 points that are actually red are 
 predicted as blue.
 
 
-Creating a decision tree model that we will use to predict the class of the
-points.
+
+By using a decision tree model created below, we can better predict the class of
+the points.
 ```{r}
 dtree <- rpart(y ~ x1 + x2, df, method = 'class')
 rpart.plot(dtree)
@@ -112,81 +117,27 @@ overview(f_dtree)
 Based on the confusion matrix, it actually perfectly predicts the values.
 
 
-#### Creating Neural Network with 1 hidden layer
-```{r}
-# neural network with 1 hidden layer
-module <- nn_module(
-  intialize = function() {
-    self$f <- nn_linear(2,20)
-    self$g <- nn_linear(20,1)
-    self$a <- nn_relu()
-    self$s <- nn_sigmoid()
-  },
-  forward = function(x) {
-    x %>%
-      self$f() %>%
-      self$a() %>%
-      self$g() %>%
-      self$a() %>%
-      self$s() 
-  }
-)
-```
+#### Creating Neural Networks
 
-
+###### Neural Network with 2 hidden layer
 
 ```{r}
-# pre-process data
+
 X_tensor <- torch_tensor(df[, -1] %>% as.matrix(), dtype = torch_float())
 y_tensor <- torch_tensor(cbind(df[, 1] %>% as.numeric() - 1), dtype = torch_float())
-```
 
-```{r}
+
 Loss <- function(x, y, model){
-  nn_bce_loss()(model(x),y)
-}
-```
-
-```{r}
-F <- module()
-Loss(X_tensor, y_tensor, module)
-
-
-F <- module()
-optimizer <- optim_adam(F$parameters, lr = 0.05)
-epochs <- 1000
-
-for(i in 1:epochs){
-  loss <- Loss(X_tensor, y_tensor, F)
-  
-  optimizer$zero_grad()
-  loss$backward()
-  optimizer$step()
-  
-  if (i < 10 || i %% 100 == 0) {
-    cat(sprintf("Epoch: %d, Loss: %.4f\n", i, loss$item()))
-  }
+  nn_bce_loss()(model(x), y)
 }
 
 
-f_nn = \(x) as_array(F(torch_tensor(x %>% as.matrix(), dtype = torch_float())))
-
-plot(f_nn, df_new)
-
-overview(f_logistic)
-overview(f_dtree)
-overview(f_svm)
-```
-
-
-#### Neural Network with 2 hidden layer
-
-```{r}
 Xnew <- cbind(
   x1 = rep(seq(-1, 1, length.out = 50), 50),
-  x2 = rep(seq(-1, 1, length.out = 50), each = 50)
-)
-df_new = data.frame(x1=Xnew[,1], x2=Xnew[,2])
+  x2 = rep(seq(-1, 1, length.out = 50), each = 50))
+
+
+df_new <- data.frame(x1=Xnew[,1], x2=Xnew[,2])
 
 p <- 2
 q <- 20
@@ -217,7 +168,7 @@ hh2_module <- nn_module(
 
 F <- hh2_module()
 optimizer <- optim_adam(F$parameters, lr = 0.05)
-epochs <- 1000
+epochs <- 200
 
 for(i in 1:epochs){
   loss <- Loss(X_tensor, y_tensor, F)
@@ -226,21 +177,16 @@ for(i in 1:epochs){
   loss$backward()
   optimizer$step()
   
-  if (i < 10 || i %% 100 == 0) {
+  if (i < 10 || i %% 20 == 0) {
     cat(sprintf("Epoch: %d, Loss: %.4f\n", i, loss$item()))
   }
 }
 
 
 f_nn = \(x) as_array(F(torch_tensor(x %>% as.matrix(), dtype = torch_float())))
-overview(f_logistic)
-overview()
-
-#f <- classifier(df, 'nn')
-#plt(f, df_new)
-#overview(df)
+overview(f_nn)
 ```
-
+From this neural network, we can see that it perfectly predicts the values.
 
 
 
@@ -283,7 +229,7 @@ f_lm = \(x)
     predict(., x)
 plt_reg(f_lm, df_new)
 ```
-
+* This linear regression doesn't do a good job fitting the data (too simple)
 
 
 Polynomial regression on that plot
@@ -293,15 +239,20 @@ f_polynomial = \(x)
     predict(., x)
 plt_reg(f_polynomial, df_new)
 ```
+* The polynomial regression does a better job and creates less error as it 
+'moves' more with the curve than the linear regression.
 
 
-ree
+Decision Tree regression
 ```{r}
 f_dtree = \(x)
     rpart(y ~ x, df) %>%
     predict(., x)
 plt_reg(f_dtree, df_new)
 ```
+* Decision tree does good job of modeling funtion especially in the range of (5,6),
+but it has some weakness in the beginning
+
 
 
 Support Vector Machine
@@ -311,14 +262,17 @@ f_svm = \(x)
     predict(., x)
 plt_reg(f_svm, df_new)
 ```
+* SVM might do the best job as it consistently flows in directions similar to the
+data displayed which results in less error.
+
 
 Neural Network
 ```{r}
 reg_module <- nn_module(
   initialize = function() {
-    self$f <- nn_linear(1,20)
-    self$g <- nn_linear(20,100)
-    self$h <- nn_linear(100,1)
+    self$f <- nn_linear(1,50)
+    self$g <- nn_linear(50,200)
+    self$h <- nn_linear(200,1)
     self$a <- nn_relu()
     self$s <- nn_sigmoid()
   },
@@ -337,7 +291,7 @@ f_nn <- function(x){
   F <- reg_module()
   X_tensor <- torch_tensor(df$x %>% as.matrix(), dtype=torch_float())
   y_tensor <- torch_tensor(cbind(df$y), dtype=torch_float())
-  optimizer <- optim_adam(F$parameters, lr = 0.05)
+  optimizer <- optim_adam(F$parameters, lr = 0.001)
   epochs <- 2000
   
   for(i in epochs){
@@ -351,15 +305,7 @@ f_nn <- function(x){
 
 plt_reg(f_nn, df_new)
 ```
+* I'm not sure why the neural network does such a poor job with the data, and I 
+don't know how to fix it but remember that it performed much better in the 
+demonstration in class.
 
-
-
-
-Getting rid of sigmoid layer in nn creates neural network regression instead of
-nn classification
-
-
-Can switch from relu() to sigmoid() to make a smoother curve (still for regression
-but is being used as activation)
-}
-```
